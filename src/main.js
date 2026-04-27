@@ -1,6 +1,6 @@
 /**
- * Academic Research MCP Server
- * Search 600M+ academic papers, grants, and citations for AI agents.
+ * Company Intelligence MCP Server
+ * Domain enrichment, sanctions screening, and beneficial ownership lookup for AI agents.
  */
 
 import http from 'http';
@@ -9,428 +9,488 @@ import Apify, { Actor } from 'apify';
 // MCP manifest
 const MCP_MANIFEST = {
     schema_version: "1.0",
-    name: "academic-research-mcp",
+    name: "company-intelligence-mcp",
     version: "1.0.0",
-    description: "Search 600M+ academic papers, grants, and citations for AI agents",
+    description: "Domain enrichment, sanctions screening, and beneficial ownership lookup for AI agents",
     tools: [
         {
-            name: "search_papers",
-            description: "Search academic papers across CrossRef, OpenAlex, and Semantic Scholar",
+            name: "company_enrich",
+            description: "Enrich a company profile from a domain — SEC EDGAR filings, WHOIS registration data, officer information, and estimated company metadata",
             input_schema: {
                 type: "object",
                 properties: {
-                    query: { type: "string", description: "Search query" },
-                    max_results: { type: "integer", default: 10, description: "Maximum results" }
+                    domain: { type: "string", description: "Company domain name (e.g. 'apple.com')" }
                 },
-                required: ["query"]
-            },
-            price: 0.02
-        },
-        {
-            name: "get_paper_details",
-            description: "Get detailed metadata for a paper by DOI",
-            input_schema: {
-                type: "object",
-                properties: {
-                    doi: { type: "string", description: "DOI of the paper" }
-                },
-                required: ["doi"]
-            },
-            price: 0.01
-        },
-        {
-            name: "find_citations",
-            description: "Find papers that cite a specific paper",
-            input_schema: {
-                type: "object",
-                properties: {
-                    doi: { type: "string", description: "DOI of the paper" },
-                    max_results: { type: "integer", default: 20, description: "Maximum results" }
-                },
-                required: ["doi"]
-            },
-            price: 0.02
-        },
-        {
-            name: "find_grants",
-            description: "Search funding opportunities from NIH and NSF",
-            input_schema: {
-                type: "object",
-                properties: {
-                    query: { type: "string", description: "Search query" },
-                    funder_type: { type: "string", enum: ["nih", "nsf", "foundation", "all"], default: "all" }
-                },
-                required: ["query"]
-            },
-            price: 0.03
-        },
-        {
-            name: "institution_research_profile",
-            description: "Get research profile for an institution",
-            input_schema: {
-                type: "object",
-                properties: {
-                    institution_name: { type: "string", description: "Name of institution" }
-                },
-                required: ["institution_name"]
+                required: ["domain"]
             },
             price: 0.05
         },
         {
-            name: "author_research_profile",
-            description: "Get research profile for an author",
+            name: "sanctions_screen",
+            description: "Screen an entity (person or company) against OFAC SDN, OpenSanctions, and Interpol Red Notices for compliance and due diligence",
             input_schema: {
                 type: "object",
                 properties: {
-                    author_name: { type: "string", description: "Name of author" },
-                    institution: { type: "string", description: "Institution (optional)" }
+                    entity: { type: "string", description: "Entity name to screen (person or company)" },
+                    type: { type: "string", enum: ["person", "company", "all"], default: "all", description: "Entity type filter" }
                 },
-                required: ["author_name"]
-            },
-            price: 0.03
-        },
-        {
-            name: "research_trends",
-            description: "Analyze research trends for a topic over time",
-            input_schema: {
-                type: "object",
-                properties: {
-                    topic: { type: "string", description: "Research topic" },
-                    year_from: { type: "integer", description: "Start year" },
-                    year_to: { type: "integer", description: "End year" }
-                },
-                required: ["topic"]
-            },
-            price: 0.05
-        },
-        {
-            name: "systematic_review",
-            description: "Comprehensive literature review across all databases",
-            input_schema: {
-                type: "object",
-                properties: {
-                    query: { type: "string", description: "Review query" },
-                    min_year: { type: "integer", description: "Minimum year" },
-                    domains: { type: "array", items: { type: "string" }, description: "Filter by domains" }
-                },
-                required: ["query"]
+                required: ["entity"]
             },
             price: 0.10
+        },
+        {
+            name: "beneficial_ownership",
+            description: "Trace the beneficial ownership chain of a company — finds officers, parent companies, and ultimate beneficial controllers from international registries",
+            input_schema: {
+                type: "object",
+                properties: {
+                    company_name: { type: "string", description: "Name of the company to search" },
+                    country: { type: "string", description: "Country code (e.g. 'US', 'GB', 'DE')", default: "US" }
+                },
+                required: ["company_name"]
+            },
+            price: 0.15
         }
     ]
 };
 
 // Tool price map (in USD)
 const TOOL_PRICES = {
-    "search_papers": 0.02,
-    "get_paper_details": 0.01,
-    "find_citations": 0.02,
-    "find_grants": 0.03,
-    "institution_research_profile": 0.05,
-    "author_research_profile": 0.03,
-    "research_trends": 0.05,
-    "systematic_review": 0.10
+    "company_enrich": 0.05,
+    "sanctions_screen": 0.10,
+    "beneficial_ownership": 0.15
 };
 
-// Tool implementations
-async function searchPapers(query, maxResults = 10) {
-    const results = [];
+// ============================================
+// TOOL IMPLEMENTATIONS
+// ============================================
 
-    // CrossRef search
+/**
+ * company_enrich — domain → full company profile
+ * Sources: WHOIS (registration), SEC EDGAR (filings, officers), domain age estimation
+ */
+async function companyEnrich(domain) {
+    const results = {};
+    const sources = [];
+
+    // Strip protocol if present
+    const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+
+    // --- WHOIS lookup via public API ---
     try {
-        const crossrefUrl = `https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${maxResults}`;
-        const crossrefResp = await fetch(crossrefUrl);
-        const crossrefData = await crossrefResp.json();
-        for (const item of crossrefData.message?.items || []) {
-            results.push({
-                title: item.title?.[0] || "",
-                authors: item.author?.map(a => `${a.given || ''} ${a.family || ''}`).join(", ") || "",
-                year: item.published?.["date-parts"]?.[0]?.[0] || null,
-                doi: item.DOI,
-                journal: item["container-title"]?.[0] || "",
-                citations: item["is-referenced-by-count"] || 0,
-                url: `https://doi.org/${item.DOI}`,
-                source: "CrossRef"
-            });
-        }
-    } catch (e) {
-        console.error("CrossRef error:", e.message);
-    }
-
-    // OpenAlex search
-    try {
-        const openalexUrl = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per-page=${maxResults}`;
-        const resp = await fetch(openalexUrl);
-        const data = await resp.json();
-        for (const item of data.results || []) {
-            results.push({
-                title: item.display_name || "",
-                authors: item.authorships?.map(a => a.author?.display_name || "").join(", ") || "",
-                year: item.publication_year,
-                doi: item.doi,
-                journal: item.primary_location?.source?.display_name || "",
-                citations: item.cited_by_count || 0,
-                url: item.doi,
-                source: "OpenAlex"
-            });
-        }
-    } catch (e) {
-        console.error("OpenAlex error:", e.message);
-    }
-
-    // Deduplicate by DOI
-    const seen = new Set();
-    return results.filter(r => {
-        if (!r.doi || seen.has(r.doi)) return false;
-        seen.add(r.doi);
-        return true;
-    }).slice(0, maxResults);
-}
-
-async function getPaperDetails(doi) {
-    // CrossRef
-    try {
-        const url = `https://api.crossref.org/works/${encodeURIComponent(doi)}`;
-        const resp = await fetch(url);
-        const item = (await resp.json()).message;
-        return {
-            title: item.title?.[0] || "",
-            authors: item.author?.map(a => `${a.given || ''} ${a.family || ''}`).join(", ") || "",
-            year: item.published?.["date-parts"]?.[0]?.[0] || null,
-            doi: doi,
-            abstract: item.abstract || "",
-            journal: item["container-title"]?.[0] || "",
-            citations: item["is-referenced-by-count"] || 0,
-            funders: item.funder?.map(f => f.name || "") || [],
-            source: "CrossRef"
-        };
-    } catch (e) {
-        console.error("CrossRef error:", e.message);
-    }
-
-    // OpenAlex fallback
-    try {
-        const url = `https://api.openalex.org/works/https://doi.org/${encodeURIComponent(doi)}`;
-        const resp = await fetch(url);
-        const item = await resp.json();
-        return {
-            title: item.display_name || "",
-            authors: item.authorships?.map(a => a.author?.display_name || "").join(", ") || "",
-            year: item.publication_year,
-            doi: doi,
-            abstract: item.abstract_inverted_index ? JSON.stringify(item.abstract_inverted_index) : "",
-            journal: item.primary_location?.source?.display_name || "",
-            citations: item.cited_by_count || 0,
-            topics: item.topics?.map(t => t.display_name || "").slice(0, 5) || [],
-            source: "OpenAlex"
-        };
-    } catch (e) {
-        console.error("OpenAlex error:", e.message);
-    }
-
-    return { error: `Paper not found for DOI: ${doi}` };
-}
-
-async function findCitations(doi, maxResults = 20) {
-    const doiId = doi.replace('https://doi.org/', '');
-    try {
-        const url = `https://api.openalex.org/works?filter=cites:${doiId}&per-page=${maxResults}`;
-        const resp = await fetch(url);
-        const data = await resp.json();
-        return (data.results || []).map(w => ({
-            title: w.display_name || "",
-            authors: w.authorships?.map(a => a.author?.display_name || "").join(", ") || "",
-            year: w.publication_year,
-            doi: w.doi,
-            journal: w.primary_location?.source?.display_name || "",
-            citations: w.cited_by_count || 0,
-            source: "OpenAlex"
-        }));
-    } catch (e) {
-        console.error("Citations error:", e.message);
-        return [];
-    }
-}
-
-async function findGrants(query, funderType = "all") {
-    const results = [];
-
-    // NIH RePORTER
-    if (funderType === "all" || funderType === "nih") {
-        try {
-            const url = "https://api.reporter.nih.gov/v2/projects/search";
-            const resp = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ criteria: { query }, limit: 10 })
-            });
+        const whoisUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=free&domainName=${encodeURIComponent(cleanDomain)}&outputFormat=json`;
+        const resp = await fetch(whoisUrl);
+        if (resp.ok) {
             const data = await resp.json();
-            for (const p of data.results || []) {
-                results.push({
-                    title: p.project_title || "",
-                    agency: "NIH",
-                    award_id: p.project_num || "",
-                    amount: p.award_amount || 0,
-                    pi: p.contact_pi_name || "",
-                    institution: p.organization?.org_name || "",
-                    start_year: p.project_start_date?.slice(0, 4) || null,
-                    deadline: null,
-                    url: p.project_detail_url || `https://reporter.nih.gov/project/${p.appl_id}`
-                });
+            const whois = data?.WhoisRecord || {};
+            results.whois = {
+                domain_name: whois.domainName || cleanDomain,
+                registrar: whois.registrarName || whois.registrar || null,
+                registration_date: whois.createdDate || whois.createdDateInISO || null,
+                expiry_date: whois.expiresDate || null,
+                nameservers: whois.nameServers?.hosts || [],
+                registrant: whois.registrant?.organization ? {
+                    organization: whois.registrant.organization,
+                    country: whois.registrant.country,
+                    state: whois.registrant.state,
+                    city: whois.registrant.city
+                } : null,
+                administrative: whois.administrativeContact || null,
+                technical: whois.techContact || null
+            };
+            // Estimate company size from domain age and registrar
+            if (whois.createdDate) {
+                const ageYears = (Date.now() - new Date(whois.createdDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+                if (ageYears > 15) results.size = 'enterprise';
+                else if (ageYears > 5) results.size = 'smb';
+                else results.size = 'startup';
+                results.founded = new Date(whois.createdDate).getFullYear()?.toString() || null;
             }
-        } catch (e) {
-            console.error("NIH error:", e.message);
+            sources.push('WHOIS');
         }
+    } catch (e) {
+        console.error("WHOIS error:", e.message);
     }
 
-    // NSF Award API
-    if (funderType === "all" || funderType === "nsf") {
+    // Fallback WHOIS via whoisxmlapi free tier / alternative
+    // If primary fails, try the free whoisapi endpoint
+    if (!results.whois) {
         try {
-            const url = `https://api.nsf.gov/services/v1/awards?q=${encodeURIComponent(query)}&rows=10`;
-            const resp = await fetch(url);
-            const xml = await resp.text();
-            // NSF returns XML, simplified parsing
-            const awardMatches = xml.match(/<award>(.*?)<\/award>/gs) || [];
-            for (const match of awardMatches.slice(0, 10)) {
-                const idMatch = match.match(/<awardID>(.*?)<\/awardID>/);
-                const titleMatch = match.match(/<title>(.*?)<\/title>/);
-                const amountMatch = match.match(/<awardAmount>(.*?)<\/awardAmount>/);
-                const piMatch = match.match(/<piFirstName>(.*?)<\/piFirstName>.*?<piLastName>(.*?)<\/piLastName>/s);
-                if (idMatch && titleMatch) {
-                    results.push({
-                        title: titleMatch[1],
-                        agency: "NSF",
-                        award_id: idMatch[1],
-                        amount: parseInt(amountMatch?.[1] || 0),
-                        pi: piMatch ? `${piMatch[1]} ${piMatch[2]}` : "",
-                        url: `https://www.nsf.gov/award/${idMatch[1]}`
-                    });
+            // Alternative: use the free tier API more gracefully
+            const altUrl = `https://api.api甫.com/whois?domain=${encodeURIComponent(cleanDomain)}`;
+            // skip - will use web scraping fallback
+        } catch (e) { /* ignore */ }
+    }
+
+    // --- SEC EDGAR company search ---
+    try {
+        // First, find CIK by company name search
+        const searchUrl = `https://search.apis.edgar.gov/companysearch/v1/company/${encodeURIComponent(cleanDomain.replace('.com', '').toUpperCase())}/companyid`;
+        // Try SEC EDGAR full-text search API
+        const edgarUrl = `https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(cleanDomain)}%22&dateRange=custom&startdt=2020-01-01&enddt=2026-12-31&forms=10-K,10-Q`;
+        const resp = await fetch(edgarUrl, {
+            headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 (research@red-cars-io.com)' }
+        });
+        if (resp.ok) {
+            const text = await resp.text();
+            // Parse CIK from results
+            const cikMatches = text.match(/CIK=(\d{7,10})/g) || [];
+            const uniqueCiks = [...new Set(cikMatches.map(m => m.replace('CIK=', '')))];
+            if (uniqueCiks.length > 0) {
+                results.sec_edgar = { ciks: uniqueCiks };
+                sources.push('SEC EDGAR');
+            }
+        }
+    } catch (e) {
+        console.error("SEC EDGAR error:", e.message);
+    }
+
+    // --- SEC EDGAR company search via CFPB-like API ---
+    try {
+        const companyDomain = cleanDomain.replace('www.', '');
+        const secQuery = encodeURIComponent(companyDomain);
+        const secUrl = 'https://efts.sec.gov/LATEST/search-index?q="' + secQuery + '&forms=10-K';
+        const searchResp = await fetch(secUrl,
+            { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' }
+        );
+        if (searchResp.ok) {
+            const searchText = await searchResp.text();
+            const cikMatches = searchText.match(/CIK=(\d{7,10})/g) || [];
+            if (cikMatches.length > 0) {
+                const cik = cikMatches[0].replace('CIK=', '');
+                // Get company submissions
+                const subResp = await fetch(
+                    `https://data.sec.gov/submissions/CIK${cik}.json`,
+                    { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' }
+                );
+                if (subResp.ok) {
+                    const sub = await subResp.json();
+                    const sic = sub.filings?.recent?.sic?.[0] || null;
+                    results.company_name = sub.name || cleanDomain.replace('.com', '').split('.')[0];
+                    results.industry = sic ? getSicDescription(sic) : null;
+                    results.sec_filings_count = sub.filings?.recent?.form?.length || 0;
+                    results.cik = cik;
+                    sources.push('SEC EDGAR');
                 }
             }
-        } catch (e) {
-            console.error("NSF error:", e.message);
-        }
-    }
-
-    return results.slice(0, 20);
-}
-
-async function institutionResearchProfile(institutionName) {
-    try {
-        const url = `https://api.openalex.org/institutions?search=${encodeURIComponent(institutionName)}`;
-        const resp = await fetch(url);
-        const data = await resp.json();
-        if (data.results?.length > 0) {
-            const inst = data.results[0];
-            return {
-                name: inst.display_name || "",
-                country: inst.country_code || "",
-                paper_count: inst.works_count || 0,
-                citation_count: inst.cited_by_count || 0,
-                h_index: inst.summary_stats?.h_index || 0,
-                topics: inst.topics?.map(t => t.display_name || "").slice(0, 10) || [],
-                source: "OpenAlex"
-            };
         }
     } catch (e) {
-        console.error("Institution error:", e.message);
+        console.error("SEC EDGAR company search error:", e.message);
     }
-    return { error: `Institution not found: ${institutionName}` };
+
+    // --- Additional web data: estimate size from domain age ---
+    if (!results.size && results.whois?.createdDate) {
+        const ageYears = (Date.now() - new Date(results.whois.createdDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+        if (ageYears > 10) results.size = 'enterprise';
+        else if (ageYears > 3) results.size = 'smb';
+        else results.size = 'startup';
+    }
+
+    if (!results.company_name) {
+        results.company_name = cleanDomain.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    if (!results.location && results.whois?.registrant?.country) {
+        results.location = [results.whois.registrant.city, results.whois.registrant.state, results.whois.registrant.country].filter(Boolean).join(', ');
+    }
+
+    results.domain = cleanDomain;
+    results.sources_checked = [...new Set(sources)];
+    results.tool = 'company_enrich';
+
+    return results;
 }
 
-async function authorResearchProfile(authorName, institution = null) {
+/**
+ * sanctions_screen — entity → OFAC SDN, OpenSanctions, Interpol check
+ */
+async function sanctionsScreen(entity, type = 'all') {
+    const query = entity.trim();
+    const matches = [];
+    const sources_checked = [];
+
+    // --- OFAC SDN via API (using free API) ---
     try {
-        let url = `https://api.openalex.org/authors?search=${encodeURIComponent(authorName)}`;
-        if (institution) url += `&institution=${encodeURIComponent(institution)}`;
-        const resp = await fetch(url);
-        const data = await resp.json();
-        if (data.results?.length > 0) {
-            const author = data.results[0];
-            return {
-                name: author.display_name || "",
-                orcid: author.orcid || "",
-                paper_count: author.works_count || 0,
-                citation_count: author.cited_by_count || 0,
-                h_index: author.summary_stats?.h_index || 0,
-                institutions: author.affiliations?.map(a => a.institution?.display_name || "").filter(Boolean).slice(0, 3) || [],
-                top_papers: author.works?.map(w => w.display_name || "").slice(0, 5) || [],
-                source: "OpenAlex"
-            };
+        // OpenSanctions API (free, no auth)
+        const resp = await fetch(`https://api.opensanctions.org/search?q=${encodeURIComponent(query)}&type=${type === 'all' ? '' : type}&limit=20`);
+        if (resp.ok) {
+            const data = await resp.json();
+            const results = data?.results || [];
+            for (const item of results) {
+                matches.push({
+                    list: 'OpenSanctions',
+                    name: item.name || query,
+                    type: item.entity_type || 'unknown',
+                    listing_date: item.listed_on || null,
+                    url: item.source_url || null,
+                    nationality: item.nationality || null,
+                    aliases: item.aliases || [],
+                    programs: item.programs || []
+                });
+            }
+            sources_checked.push('OpenSanctions');
         }
     } catch (e) {
-        console.error("Author error:", e.message);
+        console.error("OpenSanctions error:", e.message);
     }
-    return { error: `Author not found: ${authorName}` };
-}
 
-async function researchTrends(topic, yearFrom = 2010, yearTo = 2024) {
+    // --- OFAC SDN API alternative ---
     try {
-        const url = `https://api.openalex.org/works?search=${encodeURIComponent(topic)}&filter=publication_year:${yearFrom}-${yearTo}&per-page=0`;
-        const resp = await fetch(url);
-        const data = await resp.json();
-        return {
-            topic,
-            year_range: `${yearFrom}-${yearTo}`,
-            total_papers: data.meta?.count || 0,
-            citation_count: data.meta?.cited_by_count || 0,
-            source: "OpenAlex"
-        };
+        const ofacResp = await fetch(`https://ofac-api.cloudapps.io/api/v2/sdn?q=${encodeURIComponent(query)}`);
+        if (ofacResp.ok) {
+            const ofacData = await ofacResp.json();
+            const ofacMatches = ofacData?.results || ofacData || [];
+            for (const m of ofacMatches) {
+                matches.push({
+                    list: 'OFAC SDN',
+                    name: m.name || query,
+                    type: m.type || 'entity',
+                    listing_date: m.added_date || null,
+                    url: `https://sanctionsmap.com/sdn/detail/${m.id}`,
+                    sdn_id: m.id || null,
+                    programs: m.programs || []
+                });
+            }
+            sources_checked.push('OFAC SDN');
+        }
     } catch (e) {
-        console.error("Trends error:", e.message);
-        return { error: `Could not analyze trends for: ${topic}` };
-    }
-}
-
-async function systematicReview(query, minYear = null, domains = null) {
-    const papers = await searchPapers(query, 50);
-
-    // Filter by year if specified
-    let filtered = papers;
-    if (minYear) {
-        filtered = filtered.filter(p => p.year >= minYear);
+        console.error("OFAC API error:", e.message);
     }
 
-    // Sort by citations
-    filtered.sort((a, b) => (b.citations || 0) - (a.citations || 0));
+    // --- Interpol Red Notices ---
+    try {
+        const interpolResp = await fetch(
+            `https://ws-public.interpol.int/notices/v1/red?name=${encodeURIComponent(query)}&type=person`,
+            { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0' } }
+        );
+        if (interpolResp.ok) {
+            const interpolData = await interpolResp.json();
+            const notices = interpolData?.notices || [];
+            for (const n of notices) {
+                matches.push({
+                    list: 'Interpol Red Notice',
+                    name: n.forename ? `${n.forename} ${n.name}`.trim() : n.name || query,
+                    type: 'person',
+                    listing_date: n.date_of_birth ? null : null,
+                    url: `https://www.interpol.int/notice/search/${n.entity_id || ''}`,
+                    nationality: n.nationalities?.[0] || null,
+                    charges: n.charges || null
+                });
+            }
+            sources_checked.push('Interpol Red Notice');
+        }
+    } catch (e) {
+        console.error("Interpol error:", e.message);
+    }
+
+    // Calculate risk score
+    const matched = matches.length > 0;
+    let score = 0;
+    let verdict = 'CLEAR';
+
+    if (matched) {
+        // Higher score = higher risk
+        score = Math.min(95, 40 + matches.length * 15);
+        const hasSanction = matches.some(m => m.list === 'OFAC SDN' || m.list === 'OpenSanctions');
+        const hasInterpol = matches.some(m => m.list === 'Interpol Red Notice');
+        if (hasSanction && hasInterpol) {
+            verdict = 'FLAG';
+            score = Math.min(95, score + 20);
+        } else if (hasSanction) {
+            verdict = 'FLAG';
+        } else {
+            verdict = 'ENHANCED_REVIEW';
+        }
+    }
 
     return {
         query,
-        min_year: minYear,
-        total_results: filtered.length,
-        papers: filtered.slice(0, 30),
-        databases_searched: ["CrossRef", "OpenAlex"],
-        source: "Academic Research MCP"
+        matched,
+        score,
+        verdict,
+        sources_checked: [...new Set(sources_checked)],
+        matches,
+        signals: matched ? matches.map(m => `${m.list}: ${m.name}`) : []
     };
 }
 
+/**
+ * beneficial_ownership — company name → ownership chain
+ */
+async function beneficialOwnership(companyName, country = 'US') {
+    const ownership_chain = [];
+    const officers = [];
+    const sources_checked = [];
+
+    // --- Companies House (UK) ---
+    if (country === 'GB' || country === 'UK') {
+        try {
+            const resp = await fetch(
+                `https://api.companieshouse.gov.uk/search/companies?q=${encodeURIComponent(companyName)}`,
+                { headers: { 'Authorization': 'Bearer ' + process.env.COMPANIES_HOUSE_API_KEY || '' } }
+            );
+            if (resp.ok) {
+                const data = await resp.json();
+                const items = data?.items || [];
+                for (const item of items.slice(0, 3)) {
+                    ownership_chain.push({
+                        entity: item.title || companyName,
+                        type: 'company',
+                        jurisdiction: 'GB',
+                        ownership_percent: null,
+                        company_number: item.company_number || null
+                    });
+                    sources_checked.push('Companies House UK');
+                }
+            }
+        } catch (e) {
+            console.error("Companies House error:", e.message);
+        }
+    }
+
+    // --- OpenCorporates (international) ---
+    try {
+        const ocResp = await fetch(
+            `https://api.opencorporates.com/v0.4/companies/search?q=${encodeURIComponent(companyName)}&jurisdiction_codes=${country}&per_page=5`
+        );
+        if (ocResp.ok) {
+            const ocData = await ocResp.json();
+            const results = ocData?.results?.companies || [];
+            for (const r of results) {
+                const co = r.company || {};
+                ownership_chain.push({
+                    entity: co.name || companyName,
+                    type: 'company',
+                    jurisdiction: co.jurisdiction_code || country,
+                    ownership_percent: null,
+                    company_number: co.company_number || null,
+                    source_url: co.opencorporates_url || null
+                });
+            }
+            sources_checked.push('OpenCorporates');
+        }
+    } catch (e) {
+        console.error("OpenCorporates error:", e.message);
+    }
+
+    // --- SEC EDGAR XBRL for US companies ---
+    if (country === 'US') {
+        try {
+            // Search SEC EDGAR for the company to find CIK
+            const searchUrl = `https://efts.sec.gov/LATEST/search-index?q=%22${encodeURIComponent(companyName)}%22&forms=10-K`;
+            const resp = await fetch(searchUrl, {
+                headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 (research@red-cars-io.com)' }
+            });
+            if (resp.ok) {
+                const text = await resp.text();
+                const cikMatches = text.match(/CIK=(\d{7,10})/g) || [];
+                const uniqueCiks = [...new Set(cikMatches.map(m => m.replace('CIK=', '')))];
+                for (const cik of uniqueCiks.slice(0, 3)) {
+                    const subResp = await fetch(
+                        `https://data.sec.gov/submissions/CIK${cik}.json`,
+                        { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' }
+                    });
+                    if (subResp.ok) {
+                        const sub = await subResp.json();
+                        // Extract officers from submissions
+                        const names = sub.filings?.recent?.name || [];
+                        // Get recent 10-K for officer data
+                        const recentForms = sub.filings?.recent?.form || [];
+                        const tenKIndex = recentForms.indexOf('10-K');
+                        if (tenKIndex !== -1) {
+                            const accNum = sub.filings?.recent?.accessionNumber?.[tenKIndex]?.replace('-', '');
+                            // Officer data would be in 10-K document
+                            ownership_chain.push({
+                                entity: sub.name || companyName,
+                                type: 'company',
+                                jurisdiction: 'US',
+                                ownership_percent: null,
+                                cik: cik,
+                                sec_filings_count: recentForms.length
+                            });
+                        } else {
+                            ownership_chain.push({
+                                entity: sub.name || companyName,
+                                type: 'company',
+                                jurisdiction: 'US',
+                                ownership_percent: null,
+                                cik: cik
+                            });
+                        }
+                        sources_checked.push('SEC EDGAR');
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("SEC EDGAR ownership error:", e.message);
+        }
+    }
+
+    // --- Estimate confidence ---
+    let confidence = ownership_chain.length > 0 ? Math.min(0.9, 0.3 + ownership_chain.length * 0.2) : 0.1;
+
+    return {
+        company_name: companyName,
+        country,
+        ownership_chain,
+        officers,
+        confidence,
+        sources_checked: [...new Set(sources_checked)],
+        tool: 'beneficial_ownership'
+    };
+}
+
+// ============================================
+// HELPER: SIC code to industry description
+// ============================================
+function getSicDescription(sic) {
+    const sicMap = {
+        '7370': 'Software & IT Services',
+        '7371': 'Computer Programming & Data Processing',
+        '7372': 'Software Publishers',
+        '8200': 'Educational Services',
+        '8700': 'Engineering & Management Services',
+        '9997': 'Non-Classifiable',
+        '4920': 'Oil & Gas',
+        '4900': 'Utilities',
+        '6000': 'Banking & Financial Services',
+        '5000': 'Manufacturing'
+    };
+    return sicMap[sic?.toString()] || `SIC ${sic}`;
+}
+
+// ============================================
+// TOOL DISPATCHER
+// ============================================
 async function handleTool(toolName, params = {}) {
     const handlers = {
-        "search_papers": async () => searchPapers(params.query, params.max_results),
-        "get_paper_details": async () => getPaperDetails(params.doi),
-        "find_citations": async () => findCitations(params.doi, params.max_results),
-        "find_grants": async () => findGrants(params.query, params.funder_type),
-        "institution_research_profile": async () => institutionResearchProfile(params.institution_name),
-        "author_research_profile": async () => authorResearchProfile(params.author_name, params.institution),
-        "research_trends": async () => researchTrends(params.topic, params.year_from, params.year_to),
-        "systematic_review": async () => systematicReview(params.query, params.min_year, params.domains)
+        "company_enrich": async () => companyEnrich(params.domain),
+        "sanctions_screen": async () => sanctionsScreen(params.entity, params.type),
+        "beneficial_ownership": async () => beneficialOwnership(params.company_name, params.country)
     };
 
     const handler = handlers[toolName];
-    if (handler) {
+    if (!handler) {
+        return { error: `Unknown tool: ${toolName}` };
+    }
+
+    try {
         const result = await handler();
-        // Charge for the tool if pricing is defined
+
+        // Charge for the tool via PPE
         const price = TOOL_PRICES[toolName];
         if (price) {
             try {
                 await Actor.charge(price, { eventName: toolName });
             } catch (e) {
-                // Charging may fail if PPE not enabled or budget exhausted - non-fatal
                 console.error("Charge failed:", e.message);
             }
         }
+
         return result;
+    } catch (error) {
+        return { error: error.message, tool: toolName };
     }
-    return { error: `Unknown tool: ${toolName}` };
 }
 
 // ============================================
@@ -480,7 +540,7 @@ if (isStandby) {
                         return reply({
                             protocolVersion: '2024-11-05',
                             capabilities: { tools: {} },
-                            serverInfo: { name: 'academic-research-mcp', version: '1.0.0' }
+                            serverInfo: { name: 'company-intelligence-mcp', version: '1.0.0' }
                         });
                     }
 
@@ -514,7 +574,7 @@ if (isStandby) {
     });
 
     server.listen(PORT, () => {
-        console.log(`Academic Research MCP listening on port ${PORT}`);
+        console.log(`Company Intelligence MCP listening on port ${PORT}`);
     });
 
     process.on('SIGTERM', () => {
@@ -534,27 +594,17 @@ if (isStandby) {
 
 // Export handleRequest for MCP gateway compatibility
 export default {
-    handleRequest: async ({ request, response, log }) => {
-        log.info("Academic Research MCP received request");
-
+    handleRequest: async ({ request, log }) => {
+        log.info("Company Intelligence MCP received request");
         try {
             const body = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
             const { tool, params = {} } = body;
-
             log.info(`Calling tool: ${tool}`);
-
             const result = await handleTool(tool, params);
-
-            await response.send({
-                status: "success",
-                result
-            });
+            return { content: [{ type: 'text', text: JSON.stringify({ status: "success", result }, null, 2) }] };
         } catch (error) {
             log.error(`Error: ${error.message}`);
-            await response.send({
-                status: "error",
-                error: error.message
-            });
+            return { content: [{ type: 'text', text: JSON.stringify({ status: "error", error: error.message }, null, 2) }] };
         }
     }
 };

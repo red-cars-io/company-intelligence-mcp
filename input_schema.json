@@ -1,5 +1,5 @@
 {
-  "title": "Academic Research MCP",
+  "title": "Company Intelligence MCP",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
@@ -7,16 +7,16 @@
       "title": "Tool Name",
       "type": "string",
       "description": "MCP tool to call",
-      "enum": ["search_papers", "get_paper_details", "find_citations", "find_grants", "institution_research_profile", "author_research_profile", "research_trends", "systematic_review"],
+      "enum": ["company_enrich", "sanctions_screen", "beneficial_ownership"],
       "editor": "select",
-      "prefill": "search_papers"
+      "prefill": "company_enrich"
     },
     "params": {
       "title": "Parameters (JSON)",
       "type": "object",
       "description": "Tool parameters as JSON object",
       "editor": "json",
-      "prefill": {"query": "machine learning", "max_results": 1}
+      "prefill": {"domain": "example.com"}
     }
   }
 }

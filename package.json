@@ -1,8 +1,8 @@
 {
-  "name": "academic-research-mcp",
+  "name": "company-intelligence-mcp",
   "version": "1.0.0",
   "type": "module",
-  "description": "Academic Research MCP Server for AI agents",
+  "description": "Company intelligence MCP server — domain enrichment, sanctions screening, and beneficial ownership lookup for AI agents",
   "engines": {
     "node": ">=18.0.0"
   },

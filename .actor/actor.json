@@ -1,17 +1,17 @@
 {
   "actorSpecification": 1,
-  "name": "academic-research-mcp",
-  "title": "Academic Research MCP — AI Agent Research Librarian",
-  "description": "Search 600M+ academic papers, grants, and citations for AI agents. One tool call to CrossRef, OpenAlex, Semantic Scholar, DBLP, CORE, PubMed, NIH, and NSF.",
+  "name": "company-intelligence-mcp",
+  "title": "Company Intelligence MCP — AI Agent Due Diligence",
+  "description": "Domain enrichment, sanctions screening, and beneficial ownership lookup for AI agents. One tool call to WHOIS, SEC EDGAR, OpenSanctions, OpenCorporates, and Interpol.",
   "version": "1.0",
   "meta": {
-    "templateId": "standby-python"
+    "templateId": "standby-nodejs"
   },
   "input": "../input_schema.json",
   "readme": "../README.md",
   "categories": [
     "DEVELOPER_TOOLS",
-    "EDUCATION"
+    "BUSINESS"
   ],
   "pricing": {
     "model": "PAY_PER_EVENT"
