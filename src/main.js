@@ -606,23 +606,11 @@ if (isStandby) {
     });
 
     // Keep the process alive with graceful shutdown handling
-    let isShuttingDown = false;
-    const shutdown = () => {
-        if (isShuttingDown) return;
-        isShuttingDown = true;
-        console.log('[DEBUG] Shutting down...');
-        server.close(() => {
-            console.log('[DEBUG] Server closed, exiting...');
-            process.exit(0);
-        });
-        setTimeout(() => process.exit(0), 30000);
-    };
-    process.on('SIGTERM', shutdown);
-
-    // Block until shutdown signal
-    await new Promise(resolve => {
-        const check = () => setTimeout(() => isShuttingDown ? resolve() : check(), 1000);
-        check();
+    const keepalive = setInterval(() => {}, 10000);
+    process.on('SIGTERM', () => {
+        clearInterval(keepalive);
+        server.close(() => process.exit(0));
+        setTimeout(() => process.exit(0), 10000);
     });
 }
 // ===== NON-STANDBY PATH (Actor.isAtHome) =====
