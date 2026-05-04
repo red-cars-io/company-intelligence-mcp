@@ -555,9 +555,11 @@ if (isStandby) {
                         const toolResult = await handleTool(toolName, toolArgs);
                         // Also persist to OUTPUT for run tracking
                         try {
+                            console.log('[DEBUG] Attempting setValue for tools/call');
                             await Actor.setValue('OUTPUT', toolResult);
+                            console.log('[DEBUG] setValue succeeded');
                         } catch (e) {
-                            console.error('setValue OUTPUT failed:', e.message);
+                            console.error('[DEBUG] setValue OUTPUT failed:', e.message, e.stack);
                         }
                         return reply({ content: [{ type: 'text', text: JSON.stringify(toolResult, null, 2) }] });
                     }
