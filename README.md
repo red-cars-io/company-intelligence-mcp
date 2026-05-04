@@ -14,6 +14,10 @@ Give AI agents the ability to do company due diligence in three clicks — no AP
 - **Sanctions screening** against OFAC SDN, OpenSanctions, and Interpol Red Notices
 - **Beneficial ownership** tracing through international corporate registries
 
+## Comparison
+
+- [Comparison: vs ZoomInfo, Apollo.io](COMPARISON.md)
+
 ---
 
 ## Quick Start
@@ -168,3 +172,5 @@ Returns:
 ## SEO Keywords
 
 company enrichment API, sanctions screening API, OFAC SDN check, beneficial ownership lookup, AI agent company research, KYC automation, AML screening, M&A due diligence, corporate registry API, SEC EDGAR API, WHOIS lookup, OpenSanctions API, OpenCorporates, AI agent compliance
+
+- [Comparison: vs ZoomInfo, Apollo.io](COMPARISON.md)
