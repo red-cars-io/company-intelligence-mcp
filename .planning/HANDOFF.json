@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-04T03:00:38.690Z",
+  "timestamp": "2026-05-04T03:24:10.133Z",
   "source": "auto-postool",
   "partial": false,
   "phase": null,
@@ -21,10 +21,10 @@
       "path": ".planning/HANDOFF.json"
     },
     {
-      "status": "??",
-      "path": "storage/"
+      "status": "M",
+      "path": "src/main.js"
     }
   ],
   "next_action": null,
-  "context_notes": "Recent commits:\n7a795d1 Add Actor.setValue('OUTPUT') to MCP HTTP handler path\n5273e5c Fix syntax errors in SEC EDGAR URL construction\n3dbefc8 Add comparison page\n1f20881 Fix: standby handleRequest, actor.json name, input schema\n5e8b2ce Add LLM/SEO optimized TUTORIAL.md with framework integrations and cross-MCP chaining"
+  "context_notes": "Recent commits:\n2543c76 Add debug logging to setValue to diagnose KVS persistence\n7a795d1 Add Actor.setValue('OUTPUT') to MCP HTTP handler path\n5273e5c Fix syntax errors in SEC EDGAR URL construction\n3dbefc8 Add comparison page\n1f20881 Fix: standby handleRequest, actor.json name, input schema"
 }
