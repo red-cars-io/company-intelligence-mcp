@@ -15,7 +15,7 @@ const MCP_MANIFEST = {
     tools: [
         {
             name: "company_enrich",
-            description: "Enrich a company profile from a domain — SEC EDGAR filings, WHOIS registration data, officer information, and estimated company metadata",
+            description: "Enrich a company profile from a domain - SEC EDGAR filings, WHOIS registration data, officer information, and estimated company metadata",
             input_schema: {
                 type: "object",
                 properties: {
@@ -40,7 +40,7 @@ const MCP_MANIFEST = {
         },
         {
             name: "beneficial_ownership",
-            description: "Trace the beneficial ownership chain of a company — finds officers, parent companies, and ultimate beneficial controllers from international registries",
+            description: "Trace the beneficial ownership chain of a company - finds officers, parent companies, and ultimate beneficial controllers from international registries",
             input_schema: {
                 type: "object",
                 properties: {
@@ -66,7 +66,7 @@ const TOOL_PRICES = {
 // ============================================
 
 /**
- * company_enrich — domain → full company profile
+ * company_enrich - domain → full company profile
  * Sources: WHOIS (registration), SEC EDGAR (filings, officers), domain age estimation
  */
 async function companyEnrich(domain) {
@@ -149,9 +149,9 @@ async function companyEnrich(domain) {
     try {
         const companyDomain = cleanDomain.replace('www.', '');
         const secQuery = encodeURIComponent(companyDomain);
-        const secUrl = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent("\"")}${encodeURIComponent(secQuery)}&forms=10-K`;
+        const secUrl = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(secQuery)}&forms=10-K`;
         const searchResp = await fetch(secUrl,
-            { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' } }
+            { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' }
         );
         if (searchResp.ok) {
             const searchText = await searchResp.text();
@@ -161,7 +161,7 @@ async function companyEnrich(domain) {
                 // Get company submissions
                 const subResp = await fetch(
                     `https://data.sec.gov/submissions/CIK${cik}.json`,
-                    { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' } }
+                    { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' }
                 );
                 if (subResp.ok) {
                     const sub = await subResp.json();
@@ -202,7 +202,7 @@ async function companyEnrich(domain) {
 }
 
 /**
- * sanctions_screen — entity → OFAC SDN, OpenSanctions, Interpol check
+ * sanctions_screen - entity → OFAC SDN, OpenSanctions, Interpol check
  */
 async function sanctionsScreen(entity, type = 'all') {
     const query = entity.trim();
@@ -315,7 +315,7 @@ async function sanctionsScreen(entity, type = 'all') {
 }
 
 /**
- * beneficial_ownership — company name → ownership chain
+ * beneficial_ownership - company name → ownership chain
  */
 async function beneficialOwnership(companyName, country = 'US') {
     const ownership_chain = [];
@@ -502,7 +502,7 @@ await Actor.init();
 const isStandby = Actor.config.get('metaOrigin') === 'STANDBY';
 
 if (isStandby) {
-    const PORT = parseInt(Actor.config.get('containerPort') || process.env.ACTOR_WEB_SERVER_PORT || '3000', 10);
+    const PORT = Actor.config.get('containerPort') || process.env.ACTOR_WEB_SERVER_PORT || 3000;
 
     const server = http.createServer(async (req, res) => {
         if (req.headers['x-apify-container-server-readiness-probe']) {
@@ -553,12 +553,6 @@ if (isStandby) {
                         const toolArgs = jsonBody.params?.arguments || {};
                         if (!toolName) return replyError(-32602, 'Missing params.name');
                         const toolResult = await handleTool(toolName, toolArgs);
-                        // Also persist to OUTPUT for run tracking
-                        try {
-                            await Actor.setValue('OUTPUT', toolResult);
-                        } catch (e) {
-                            console.error('setValue OUTPUT failed:', e.message);
-                        }
                         return reply({ content: [{ type: 'text', text: JSON.stringify(toolResult, null, 2) }] });
                     }
 
@@ -566,12 +560,6 @@ if (isStandby) {
                     if (!tool) return replyError(-32602, 'Missing tool name');
 
                     const result = await handleTool(tool, params);
-                    // Persist to OUTPUT for run tracking
-                    try {
-                        await Actor.setValue('OUTPUT', result);
-                    } catch (e) {
-                        console.error('setValue OUTPUT failed:', e.message);
-                    }
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ status: 'success', result }));
                 } catch (error) {
@@ -585,19 +573,14 @@ if (isStandby) {
         res.end('Not Found');
     });
 
-    // Wait for server to be fully bound before continuing
-    await new Promise((resolve, reject) => {
-        server.on('error', reject);
-        server.listen(PORT, () => {
-            console.log(`Company Intelligence MCP listening on port ${PORT}`);
-            resolve();
-        });
+    server.listen(PORT, () => {
+        console.log(`Company Intelligence MCP listening on port ${PORT}`);
     });
 
     process.on('SIGTERM', () => {
         server.close(() => process.exit(0));
     });
-} else if (Actor.isAtHome()) {
+} else {
     const input = await Actor.getInput();
     if (input) {
         const { tool, params = {} } = input;

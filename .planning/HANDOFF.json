@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-04T02:44:15.056Z",
+  "source": "auto-postool",
+  "partial": false,
+  "phase": null,
+  "phase_name": null,
+  "phase_dir": null,
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "auto-checkpoint",
+  "completed_tasks": [],
+  "remaining_tasks": [],
+  "blockers": [],
+  "human_actions_pending": [],
+  "decisions": [],
+  "uncommitted_files": [
+    {
+      "status": "M",
+      "path": ".actor/actor.json"
+    },
+    {
+      "status": "M",
+      "path": "README.md"
+    },
+    {
+      "status": "??",
+      "path": ".planning/"
+    },
+    {
+      "status": "??",
+      "path": "README.md.bak"
+    },
+    {
+      "status": "??",
+      "path": "src/main.js.bak"
+    },
+    {
+      "status": "??",
+      "path": "src/tools.js"
+    }
+  ],
+  "next_action": null,
+  "context_notes": "Recent commits:\n5273e5c Fix syntax errors in SEC EDGAR URL construction\n3dbefc8 Add comparison page\n1f20881 Fix: standby handleRequest, actor.json name, input schema\n5e8b2ce Add LLM/SEO optimized TUTORIAL.md with framework integrations and cross-MCP chaining\n7dc3eb1 docs: add comparison to Semantic Scholar"
+}
