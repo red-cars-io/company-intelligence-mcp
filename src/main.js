@@ -62,6 +62,141 @@ const TOOL_PRICES = {
 };
 
 // ============================================
+// RDAP DOMAIN LOOKUP (replaces broken WHOIS)
+// ============================================
+
+// Known RDAP servers per TLD (rdap.bootstrap.org unreachable)
+const RDAP_SERVERS = {
+  com: 'https://rdap.verisign.com/com/domain',
+  net: 'https://rdap.verisign.com/net/domain',
+  org: 'https://rdap.org/domain',
+  io: 'https://rdap.nic.io/domain',
+  // Add more as needed
+};
+
+/**
+ * Get RDAP base URL for a TLD. Returns null if TLD not supported.
+ */
+function getRdapBaseUrl(tld) {
+  return RDAP_SERVERS[tld] || null;
+}
+
+/**
+ * Extract single value from vcardArray v4 by property name.
+ * vcardArray: ["vcard", [[propName, {params}, type, value], ...]]
+ * Returns the value string or null.
+ */
+function vcardGet(vcardArray, property) {
+  if (!vcardArray || !Array.isArray(vcardArray)) return null;
+  for (const item of vcardArray) {
+    if (!Array.isArray(item)) continue;
+    // item[0] = property name, item[3] = value (for v4 format)
+    if (item[0] === property) {
+      return (typeof item[3] === 'string' ? item[3] : null) ||
+             (typeof item[1] === 'string' ? item[1] : null);
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract date from RDAP events array by eventAction.
+ * @param {Array} events — RDAP events array
+ * @param {string} eventAction — 'registration' | 'expiration' | 'last changed'
+ * @returns {string|null} ISO date string (date part only) or null
+ */
+function extractRdapDate(events, eventAction) {
+  if (!events || !Array.isArray(events)) return null;
+  const evt = events.find(e =>
+    e.eventAction === eventAction ||
+    (e.eventType === eventAction) // fallback for robustness
+  );
+  if (!evt?.eventDate) return null;
+  return evt.eventDate.split('T')[0]; // strip time
+}
+
+/**
+ * Fetch domain WHOIS data via RDAP. Maps to results.whois shape.
+ * @param {string} domain — e.g. "apify.com"
+ * @returns {Promise<object|null>} whois-shaped object or null on failure
+ */
+async function fetchRDAP(domain) {
+  const tld = domain.split('.').pop().toLowerCase();
+  const baseUrl = getRdapBaseUrl(tld);
+  if (!baseUrl) {
+    console.error(`RDAP: no known server for .${tld}`);
+    return null;
+  }
+
+  const rdapUrl = `${baseUrl}/${domain}`;
+  let resp;
+  try {
+    resp = await fetch(rdapUrl, {
+      headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' }
+    });
+  } catch (e) {
+    console.error(`RDAP fetch error for ${domain}: ${e.message}`);
+    return null;
+  }
+
+  if (!resp.ok) {
+    if (resp.status !== 404) console.error(`RDAP returned ${resp.status} for ${domain}`);
+    return null;
+  }
+
+  const rdap = await resp.json();
+
+  // Extract registrant (entity with "registrant" role, often redacted)
+  let registrant = null;
+  if (rdap.entities?.length) {
+    const regEntity = rdap.entities.find(e => e.roles?.includes('registrant'));
+    if (regEntity?.vcardArray) {
+      registrant = {
+        organization: vcardGet(regEntity.vcardArray, 'org'),
+        country: vcardGet(regEntity.vcardArray, 'country') || vcardGet(regEntity.vcardArray, 'C'),
+        state: vcardGet(regEntity.vcardArray, 'region') || vcardGet(regEntity.vcardArray, 'SP'),
+        city: vcardGet(regEntity.vcardArray, 'city') || vcardGet(regEntity.vcardArray, 'locality')
+      };
+    }
+  }
+
+  // Extract admin/tech contacts
+  let administrative = null;
+  let technical = null;
+  if (rdap.entities?.length) {
+    for (const entity of rdap.entities) {
+      if (!entity.roles) continue;
+      if (entity.roles.includes('administrative') || entity.roles.includes('admin')) {
+        administrative = vcardGet(entity.vcardArray, 'fn') || entity.handle;
+      }
+      if (entity.roles.includes('technical') || entity.roles.includes('tech')) {
+        technical = vcardGet(entity.vcardArray, 'fn') || entity.handle;
+      }
+    }
+  }
+
+  // Extract registrar from entity with registrar role
+  let registrar = null;
+  if (rdap.entities?.length) {
+    const regEntity = rdap.entities.find(e => e.roles?.includes('registrar'));
+    if (regEntity?.vcardArray) {
+      registrar = vcardGet(regEntity.vcardArray, 'fn') || regEntity.handle || null;
+    }
+  }
+
+  return {
+    domain_name: rdap.handle || domain,
+    registrar,
+    registration_date: extractRdapDate(rdap.events, 'registration'),
+    expiry_date: extractRdapDate(rdap.events, 'expiration'),
+    nameservers: (rdap.nameservers || []).slice(0, 5).map(ns => ns.ldhName || ns.name).filter(Boolean),
+    registrant,
+    administrative,
+    technical
+  };
+}
+
+// ============================================
 // TOOL IMPLEMENTATIONS
 // ============================================
 
