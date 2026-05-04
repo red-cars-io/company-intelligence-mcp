@@ -605,14 +605,28 @@ if (isStandby) {
         });
     });
 
-    // Keep the process alive
-    process.on('SIGTERM', () => {
-        server.close(() => process.exit(0));
-    });
+    // Keep the process alive with graceful shutdown handling
+    let isShuttingDown = false;
+    const shutdown = () => {
+        if (isShuttingDown) return;
+        isShuttingDown = true;
+        console.log('[DEBUG] Shutting down...');
+        server.close(() => {
+            console.log('[DEBUG] Server closed, exiting...');
+            process.exit(0);
+        });
+        setTimeout(() => process.exit(0), 30000);
+    };
+    process.on('SIGTERM', shutdown);
 
-    // Block forever to keep server alive
-    await new Promise(() => {});
-} else if (Actor.isAtHome()) {
+    // Block until shutdown signal
+    await new Promise(resolve => {
+        const check = () => setTimeout(() => isShuttingDown ? resolve() : check(), 1000);
+        check();
+    });
+}
+// ===== NON-STANDBY PATH (Actor.isAtHome) =====
+else if (Actor.isAtHome()) {
     const input = await Actor.getInput();
     if (input) {
         const { tool, params = {} } = input;
