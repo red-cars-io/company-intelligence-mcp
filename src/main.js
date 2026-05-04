@@ -499,18 +499,12 @@ async function handleTool(toolName, params = {}) {
 
 await Actor.init();
 
-const metaOrigin = Actor.config.get('metaOrigin');
-const isAtHome = Actor.isAtHome();
-console.log('[DEBUG] metaOrigin:', metaOrigin, 'isAtHome:', isAtHome);
-const isStandby = metaOrigin === 'STANDBY';
-console.log('[DEBUG] isStandby:', isStandby);
+const isStandby = Actor.config.get('metaOrigin') === 'STANDBY';
 
 if (isStandby) {
-    console.log('[DEBUG] Starting in STANDBY mode');
     const PORT = parseInt(Actor.config.get('containerPort') || process.env.ACTOR_WEB_SERVER_PORT || '3000', 10);
 
     const server = http.createServer(async (req, res) => {
-        console.log('[DEBUG] HTTP request:', req.method, req.url);
         if (req.headers['x-apify-container-server-readiness-probe']) {
             res.writeHead(200, { 'Content-Type': 'text/plain' });
             res.end('OK');
@@ -555,21 +549,11 @@ if (isStandby) {
                     }
 
                     if (method === 'tools/call') {
-                        console.log('[DEBUG] tools/call received, params:', JSON.stringify(jsonBody.params));
                         const toolName = jsonBody.params?.name;
                         const toolArgs = jsonBody.params?.arguments || {};
                         if (!toolName) return replyError(-32602, 'Missing params.name');
                         const toolResult = await handleTool(toolName, toolArgs);
-                        // Also persist to OUTPUT for run tracking
-                        console.log('[DEBUG] tools/call result type:', typeof toolResult, Object.keys(toolResult || {}));
-                        try {
-                            console.log('[DEBUG] Calling Actor.setValue OUTPUT...');
-                            const setResult = await Actor.setValue('OUTPUT', toolResult);
-                            console.log('[DEBUG] setValue result:', setResult);
-                        } catch (e) {
-                            console.error('[DEBUG] setValue OUTPUT failed:', e.message);
-                            console.error('[DEBUG] Stack:', e.stack);
-                        }
+                        await Actor.setValue('OUTPUT', toolResult);
                         return reply({ content: [{ type: 'text', text: JSON.stringify(toolResult, null, 2) }] });
                     }
 
@@ -577,12 +561,7 @@ if (isStandby) {
                     if (!tool) return replyError(-32602, 'Missing tool name');
 
                     const result = await handleTool(tool, params);
-                    // Persist to OUTPUT for run tracking
-                    try {
-                        await Actor.setValue('OUTPUT', result);
-                    } catch (e) {
-                        console.error('setValue OUTPUT failed:', e.message);
-                    }
+                    await Actor.setValue('OUTPUT', result);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ status: 'success', result }));
                 } catch (error) {

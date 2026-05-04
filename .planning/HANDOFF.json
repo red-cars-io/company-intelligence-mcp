@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-04T03:55:52.663Z",
+  "timestamp": "2026-05-04T04:06:31.896Z",
   "source": "auto-postool",
   "partial": false,
   "phase": null,
@@ -19,8 +19,12 @@
     {
       "status": "M",
       "path": ".planning/HANDOFF.json"
+    },
+    {
+      "status": "M",
+      "path": "src/main.js"
     }
   ],
   "next_action": null,
-  "context_notes": "Recent commits:\nb16a6e6 Fix graceful shutdown and block structure in standby mode\n296e5e9 Add blocking wait in standby mode to keep server alive\n452ad22 Add comprehensive debug logging for standby/MCP path\n2543c76 Add debug logging to setValue to diagnose KVS persistence\n7a795d1 Add Actor.setValue('OUTPUT') to MCP HTTP handler path"
+  "context_notes": "Recent commits:\n194963e Simplify standby keepalive with setInterval instead of blocking Promise\nb16a6e6 Fix graceful shutdown and block structure in standby mode\n296e5e9 Add blocking wait in standby mode to keep server alive\n452ad22 Add comprehensive debug logging for standby/MCP path\n2543c76 Add debug logging to setValue to diagnose KVS persistence"
 }
