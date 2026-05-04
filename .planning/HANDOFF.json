@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-04T03:24:10.133Z",
+  "timestamp": "2026-05-04T03:39:00.301Z",
   "source": "auto-postool",
   "partial": false,
   "phase": null,
@@ -19,12 +19,8 @@
     {
       "status": "M",
       "path": ".planning/HANDOFF.json"
-    },
-    {
-      "status": "M",
-      "path": "src/main.js"
     }
   ],
   "next_action": null,
-  "context_notes": "Recent commits:\n2543c76 Add debug logging to setValue to diagnose KVS persistence\n7a795d1 Add Actor.setValue('OUTPUT') to MCP HTTP handler path\n5273e5c Fix syntax errors in SEC EDGAR URL construction\n3dbefc8 Add comparison page\n1f20881 Fix: standby handleRequest, actor.json name, input schema"
+  "context_notes": "Recent commits:\n452ad22 Add comprehensive debug logging for standby/MCP path\n2543c76 Add debug logging to setValue to diagnose KVS persistence\n7a795d1 Add Actor.setValue('OUTPUT') to MCP HTTP handler path\n5273e5c Fix syntax errors in SEC EDGAR URL construction\n3dbefc8 Add comparison page"
 }

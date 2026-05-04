@@ -605,9 +605,13 @@ if (isStandby) {
         });
     });
 
+    // Keep the process alive
     process.on('SIGTERM', () => {
         server.close(() => process.exit(0));
     });
+
+    // Block forever to keep server alive
+    await new Promise(() => {});
 } else if (Actor.isAtHome()) {
     const input = await Actor.getInput();
     if (input) {
