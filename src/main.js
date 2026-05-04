@@ -225,50 +225,62 @@ async function companyEnrich(domain) {
     // Strip protocol if present
     const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
 
-    // --- WHOIS lookup via public API ---
+    // --- RDAP domain lookup (primary) ---
     try {
-        const whoisUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=free&domainName=${encodeURIComponent(cleanDomain)}&outputFormat=json`;
-        const resp = await fetch(whoisUrl);
-        if (resp.ok) {
-            const data = await resp.json();
-            const whois = data?.WhoisRecord || {};
-            results.whois = {
-                domain_name: whois.domainName || cleanDomain,
-                registrar: whois.registrarName || whois.registrar || null,
-                registration_date: whois.createdDate || whois.createdDateInISO || null,
-                expiry_date: whois.expiresDate || null,
-                nameservers: whois.nameServers?.hosts || [],
-                registrant: whois.registrant?.organization ? {
-                    organization: whois.registrant.organization,
-                    country: whois.registrant.country,
-                    state: whois.registrant.state,
-                    city: whois.registrant.city
-                } : null,
-                administrative: whois.administrativeContact || null,
-                technical: whois.techContact || null
-            };
-            // Estimate company size from domain age and registrar
-            if (whois.createdDate) {
-                const ageYears = (Date.now() - new Date(whois.createdDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+        const rdapData = await fetchRDAP(cleanDomain);
+        if (rdapData) {
+            results.whois = rdapData;
+            sources.push('RDAP');
+            // Estimate company size from domain age
+            if (rdapData.registration_date) {
+                const ageYears = (Date.now() - new Date(rdapData.registration_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
                 if (ageYears > 15) results.size = 'enterprise';
                 else if (ageYears > 5) results.size = 'smb';
                 else results.size = 'startup';
-                results.founded = new Date(whois.createdDate).getFullYear()?.toString() || null;
+                results.founded = new Date(rdapData.registration_date).getFullYear()?.toString() || null;
             }
-            sources.push('WHOIS');
         }
     } catch (e) {
-        console.error("WHOIS error:", e.message);
+        console.error("RDAP error:", e.message);
     }
 
-    // Fallback WHOIS via whoisxmlapi free tier / alternative
-    // If primary fails, try the free whoisapi endpoint
+    // --- WHOIS fallback (secondary) ---
     if (!results.whois) {
         try {
-            // Alternative: use the free tier API more gracefully
-            const altUrl = `https://api.api甫.com/whois?domain=${encodeURIComponent(cleanDomain)}`;
-            // skip - will use web scraping fallback
-        } catch (e) { /* ignore */ }
+            const whoisUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=free&domainName=${encodeURIComponent(cleanDomain)}&outputFormat=json`;
+            const resp = await fetch(whoisUrl);
+            if (resp.ok) {
+                const data = await resp.json();
+                const whois = data?.WhoisRecord || {};
+                if (whois.domainName) {
+                    results.whois = {
+                        domain_name: whois.domainName || cleanDomain,
+                        registrar: whois.registrarName || whois.registrar || null,
+                        registration_date: whois.createdDate || whois.createdDateInISO || null,
+                        expiry_date: whois.expiresDate || null,
+                        nameservers: whois.nameServers?.hosts || [],
+                        registrant: whois.registrant?.organization ? {
+                            organization: whois.registrant.organization,
+                            country: whois.registrant.country,
+                            state: whois.registrant.state,
+                            city: whois.registrant.city
+                        } : null,
+                        administrative: whois.administrativeContact || null,
+                        technical: whois.techContact || null
+                    };
+                    if (whois.createdDate) {
+                        const ageYears = (Date.now() - new Date(whois.createdDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+                        if (ageYears > 15) results.size = 'enterprise';
+                        else if (ageYears > 5) results.size = 'smb';
+                        else results.size = 'startup';
+                        results.founded = new Date(whois.createdDate).getFullYear()?.toString() || null;
+                    }
+                    sources.push('WHOIS');
+                }
+            }
+        } catch (e) {
+            console.error("WHOIS fallback error:", e.message);
+        }
     }
 
     // --- SEC EDGAR company search ---
@@ -345,6 +357,12 @@ async function companyEnrich(domain) {
 
     results.domain = cleanDomain;
     results.sources_checked = [...new Set(sources)];
+
+    // Graceful degradation: flag as incomplete if no registration data
+    if (!results.whois && (results.sec_edgar || results.company_name)) {
+        results.incomplete = true;
+    }
+
     results.tool = 'company_enrich';
 
     return results;
