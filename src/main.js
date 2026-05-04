@@ -149,9 +149,9 @@ async function companyEnrich(domain) {
     try {
         const companyDomain = cleanDomain.replace('www.', '');
         const secQuery = encodeURIComponent(companyDomain);
-        const secUrl = 'https://efts.sec.gov/LATEST/search-index?q="' + secQuery + '&forms=10-K';
+        const secUrl = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent("\"")}${encodeURIComponent(secQuery)}&forms=10-K`;
         const searchResp = await fetch(secUrl,
-            { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' }
+            { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' } }
         );
         if (searchResp.ok) {
             const searchText = await searchResp.text();
@@ -161,7 +161,7 @@ async function companyEnrich(domain) {
                 // Get company submissions
                 const subResp = await fetch(
                     `https://data.sec.gov/submissions/CIK${cik}.json`,
-                    { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' }
+                    { headers: { 'User-Agent': 'Company-Intelligence-MCP/1.0 research@red-cars-io.com' } }
                 );
                 if (subResp.ok) {
                     const sub = await subResp.json();
@@ -502,7 +502,7 @@ await Actor.init();
 const isStandby = Actor.config.get('metaOrigin') === 'STANDBY';
 
 if (isStandby) {
-    const PORT = Actor.config.get('containerPort') || process.env.ACTOR_WEB_SERVER_PORT || 3000;
+    const PORT = parseInt(Actor.config.get('containerPort') || process.env.ACTOR_WEB_SERVER_PORT || '3000', 10);
 
     const server = http.createServer(async (req, res) => {
         if (req.headers['x-apify-container-server-readiness-probe']) {
@@ -573,14 +573,19 @@ if (isStandby) {
         res.end('Not Found');
     });
 
-    server.listen(PORT, () => {
-        console.log(`Company Intelligence MCP listening on port ${PORT}`);
+    // Wait for server to be fully bound before continuing
+    await new Promise((resolve, reject) => {
+        server.on('error', reject);
+        server.listen(PORT, () => {
+            console.log(`Company Intelligence MCP listening on port ${PORT}`);
+            resolve();
+        });
     });
 
     process.on('SIGTERM', () => {
         server.close(() => process.exit(0));
     });
-} else {
+} else if (Actor.isAtHome()) {
     const input = await Actor.getInput();
     if (input) {
         const { tool, params = {} } = input;
