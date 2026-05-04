@@ -66,12 +66,14 @@ const TOOL_PRICES = {
 // ============================================
 
 // Known RDAP servers per TLD (rdap.bootstrap.org unreachable)
+// Note: this map is incomplete — domains for TLDs not in this map will return null
+// and trigger the WHOIS fallback in companyEnrich.
 const RDAP_SERVERS = {
   com: 'https://rdap.verisign.com/com/domain',
   net: 'https://rdap.verisign.com/net/domain',
   org: 'https://rdap.org/domain',
   io: 'https://rdap.nic.io/domain',
-  // Add more as needed
+  // Add more TLDs here as you verify RDAP server URLs exist
 };
 
 /**
@@ -121,6 +123,12 @@ function extractRdapDate(events, eventAction) {
  * @returns {Promise<object|null>} whois-shaped object or null on failure
  */
 async function fetchRDAP(domain) {
+  // Reject paths, fragments, uncommon characters
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]{0,253}[a-zA-Z0-9]$/.test(domain)) {
+    console.error(`RDAP: invalid domain format: ${domain}`);
+    return null;
+  }
+
   const tld = domain.split('.').pop().toLowerCase();
   const baseUrl = getRdapBaseUrl(tld);
   if (!baseUrl) {
@@ -144,7 +152,13 @@ async function fetchRDAP(domain) {
     return null;
   }
 
-  const rdap = await resp.json();
+  let rdap;
+  try {
+    rdap = await resp.json();
+  } catch (e) {
+    console.error(`RDAP JSON parse error for ${domain}: ${e.message}`);
+    return null;
+  }
 
   // Extract registrant (entity with "registrant" role, often redacted)
   let registrant = null;
