@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-04T04:06:31.896Z",
+  "timestamp": "2026-05-04T23:00:46.764Z",
   "source": "auto-postool",
   "partial": false,
   "phase": null,
@@ -19,12 +19,8 @@
     {
       "status": "M",
       "path": ".planning/HANDOFF.json"
-    },
-    {
-      "status": "M",
-      "path": "src/main.js"
     }
   ],
   "next_action": null,
-  "context_notes": "Recent commits:\n194963e Simplify standby keepalive with setInterval instead of blocking Promise\nb16a6e6 Fix graceful shutdown and block structure in standby mode\n296e5e9 Add blocking wait in standby mode to keep server alive\n452ad22 Add comprehensive debug logging for standby/MCP path\n2543c76 Add debug logging to setValue to diagnose KVS persistence"
+  "context_notes": "Recent commits:\n1cced6f scripts: add setup-git-hooks.sh for syntax check hook\n776602e docs: add RDAP fix plan and test script\n26d3dc3 docs: add comparison page vs ZoomInfo, Apollo.io\n53ceb7a fix: RDAP primary, WHOIS fallback, graceful degradation in companyEnrich\nd5eb876 fix: add resp.json() try/catch and domain validation to fetchRDAP"
 }
