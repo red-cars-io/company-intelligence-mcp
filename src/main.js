@@ -66,14 +66,67 @@ const TOOL_PRICES = {
 // ============================================
 
 // Known RDAP servers per TLD (rdap.bootstrap.org unreachable)
-// Note: this map is incomplete — domains for TLDs not in this map will return null
-// and trigger the WHOIS fallback in companyEnrich.
+// When RDAP is unavailable for a TLD, WHOIS fallback handles it gracefully.
+// Sources: IANA RDAP bootstrap, public rdap.org aggregates.
 const RDAP_SERVERS = {
   com: 'https://rdap.verisign.com/com/domain',
   net: 'https://rdap.verisign.com/net/domain',
   org: 'https://rdap.org/domain',
   io: 'https://rdap.nic.io/domain',
-  // Add more TLDs here as you verify RDAP server URLs exist
+  // ccTLDs with public RDAP
+  ai: 'https://rdap.nic.ai/domain',
+  co: 'https://rdap.nic.co/domain',
+  // gTLDs
+  app: 'https://rdap.verisign.com/app/domain',
+  dev: 'https://rdap.verisign.com/dev/domain',
+  xyz: 'https://rdap.nic.xyz/domain',
+  info: 'https://rdap.info/domain',
+  biz: 'https://rdap.biz/domain',
+  // ccTLDs
+  us: 'https://rdap.nic.us/domain',
+  uk: 'https://rdap.nic.uk/domain',
+  de: 'https://rdap.nic.de/domain',
+  fr: 'https://rdap.nic.fr/domain',
+  jp: 'https://rdap.nic.jp/domain',
+  cn: 'https://rdap.cnnic.cn/domain',
+  au: 'https://rdap.aunic.net/domain',
+  ca: 'https://rdap.cira.ca/domain',
+  eu: 'https://rdap.nic.eu/domain',
+  ru: 'https://rdap.tcpi.ru/domain',
+  in: 'https://rdap.in.net/domain',
+  ch: 'https://rdap.nic.ch/domain',
+  nl: 'https://rdap.sidn.nl/domain',
+  se: 'https://rdap.nic.se/domain',
+  no: 'https://rdap.nic.no/domain',
+  dk: 'https://rdap.nic.dk/domain',
+  fi: 'https://rdap.nic.fi/domain',
+  es: 'https://rdap.nic.es/domain',
+  pl: 'https://rdap.nic.pl/domain',
+  cz: 'https://rdap.nic.cz/domain',
+  hu: 'https://rdap.nic.hu/domain',
+  gr: 'https://rdap.nic.gr/domain',
+  pt: 'https://rdap.nic.pt/domain',
+  tr: 'https://rdap.nic.tr/domain',
+  sk: 'https://rdap.nic.sk/domain',
+  bg: 'https://rdap.nic.bg/domain',
+  ro: 'https://rdap.nic.ro/domain',
+  ie: 'https://rdap.gnrads.ie/domain',
+  nz: 'https://rdap.dotnz.net/domain',
+  sg: 'https://rdap.sgnic.sg/domain',
+  my: 'https://rdap.mynic.my/domain',
+  th: 'https://rdap.thnic.net/domain',
+  vn: 'https://rdap.vnnic.vn/domain',
+  kr: 'https://rdap.krnic.net/domain',
+  id: 'https://rdap.idnic.net/domain',
+  ph: 'https://rdap.phnic.net/domain',
+  pk: 'https://rdap.pknic.net.pk/domain',
+  bd: 'https://rdap.bnnic.bn/domain',
+  // Additional gTLDs
+  online: 'https://rdap.nic.online/domain',
+  site: 'https://rdap.nic.site/domain',
+  tech: 'https://rdap.nic.tech/domain',
+  store: 'https://rdap.nic.store/domain',
+  website: 'https://rdap.nic.website/domain',
 };
 
 /**
@@ -247,7 +300,8 @@ async function companyEnrich(domain) {
     // --- WHOIS fallback (secondary) ---
     if (!results.whois) {
         try {
-            const whoisUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=free&domainName=${encodeURIComponent(cleanDomain)}&outputFormat=json`;
+            const whoisApiKey = process.env.WHOISXML_API_KEY || '';
+            const whoisUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=${encodeURIComponent(whoisApiKey)}&domainName=${encodeURIComponent(cleanDomain)}&outputFormat=json`;
             const resp = await fetch(whoisUrl);
             if (resp.ok) {
                 const data = await resp.json();
@@ -648,7 +702,7 @@ async function handleTool(toolName, params = {}) {
         const price = TOOL_PRICES[toolName];
         if (price) {
             try {
-                await Actor.charge(price, { eventName: toolName });
+                await Actor.charge({ eventName: toolName, count: 1 });
             } catch (e) {
                 console.error("Charge failed:", e.message);
             }
@@ -664,12 +718,13 @@ async function handleTool(toolName, params = {}) {
 // HTTP SERVER FOR STANDBY MODE
 // ============================================
 
+// ts-standby: Always init unconditionally, detect standby after
 await Actor.init();
 
-const isStandby = Actor.config.get('metaOrigin') === 'STANDBY';
+const isStandby = process.env.APIFY_META_ORIGIN === 'STANDBY';
+const PORT = Actor.config.get('standbyPort') || 3000;
 
 if (isStandby) {
-    const PORT = parseInt(Actor.config.get('containerPort') || process.env.ACTOR_WEB_SERVER_PORT || '3000', 10);
 
     const server = http.createServer(async (req, res) => {
         if (req.headers['x-apify-container-server-readiness-probe']) {
